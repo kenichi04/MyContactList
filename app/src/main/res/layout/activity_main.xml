@@ -6,8 +6,16 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
+    <Button
+        android:id="@+id/add_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Add Contact"
+        android:onClick="addContact" />
+
     <fragment xmlns:android="http://schemas.android.com/apk/res/android"
         android:name="com.example.mycontactlist.ContactsFragment"
+        android:layout_below="@+id/add_button"
         android:id="@+id/contacts_fragment"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />

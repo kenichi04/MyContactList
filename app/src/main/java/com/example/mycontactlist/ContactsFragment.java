@@ -2,11 +2,16 @@ package com.example.mycontactlist;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.ContactsContract;
 import android.provider.ContactsContract.Contacts;
+import android.provider.ContactsContract.Data;
+import android.provider.ContactsContract.CommonDataKinds.Email;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -36,11 +41,12 @@ public class ContactsFragment extends Fragment implements
     // アノテーションは、古いAndroid環境でAndroid Lintというチェックツールを掛けた際に警告を抑制する
     @SuppressLint("InlinedApi")
     private final static String[] FROM_COLUMNS = {
-            Build.VERSION.SDK_INT
-                    >= Build.VERSION_CODES.HONEYCOMB ?
-                    // いずれも連作先の表示名を表す
-                    Contacts.DISPLAY_NAME_PRIMARY :
-                    Contacts.DISPLAY_NAME
+//            Build.VERSION.SDK_INT
+//                    >= Build.VERSION_CODES.HONEYCOMB ?
+//                    // いずれも連作先の表示名を表す
+//                    Contacts.DISPLAY_NAME_PRIMARY :
+//                    Contacts.DISPLAY_NAME
+            Email.ADDRESS
     };
     /*
     * Defines an array that contains resource ids for the layout views
@@ -64,21 +70,34 @@ public class ContactsFragment extends Fragment implements
     // データ取得するデータ群. _IDとLOOKUP_KEYはデータにアクセスする際に利用する
     private static final String[] PROJECTION =
             {
-                    Contacts._ID,  // コンテンツプロバイダのデータの中で一意となるキー
-                    Contacts.LOOKUP_KEY,  // 特定の連絡先に対するパーマリンクとなるキー
-                    Build.VERSION.SDK_INT
-                            >= Build.VERSION_CODES.HONEYCOMB ?
-                            Contacts.DISPLAY_NAME_PRIMARY :
-                            Contacts.DISPLAY_NAME
+//                    Contacts._ID,  // コンテンツプロバイダのデータの中で一意となるキー
+//                    Contacts.LOOKUP_KEY,  // 特定の連絡先に対するパーマリンクとなるキー
+//                    Build.VERSION.SDK_INT
+//                            >= Build.VERSION_CODES.HONEYCOMB ?
+//                            Contacts.DISPLAY_NAME_PRIMARY :
+//                            Contacts.DISPLAY_NAME
+                        Email._ID,
+                        Email.ADDRESS,
+                        Email.TYPE,
+                        Email.LABEL,
+                        Contacts._ID,
+                        Contacts.LOOKUP_KEY
             };
 
     // Defines the text expression
     @SuppressLint("InlinedApi")
     // データを取得する際に利用されるクエリ
     private static final String SELECTION =
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB ?
-                    Contacts.DISPLAY_NAME_PRIMARY + " LIKE ?" :
-                    Contacts.DISPLAY_NAME + " LIKE ?";
+//            Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB ?
+//                    Contacts.DISPLAY_NAME_PRIMARY + " LIKE ?" :
+//                    Contacts.DISPLAY_NAME + " LIKE ?";
+
+            Email.ADDRESS + " LIKE ?" +
+                    " AND " +
+                    Data.MIMETYPE + " = " +
+                    "'" + Email.CONTENT_ITEM_TYPE + "'";
+
+    private static final String SORT_ORDER = Email.TYPE + " ASC ";
 
     // Defines a variable for the search string
     private String mSearchString;
@@ -106,7 +125,7 @@ public class ContactsFragment extends Fragment implements
     public void onActivityCreated(@Nullable Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
 
-        mSearchString = "Hoge";  // "ro of Taro/Jiro/Saburo "
+        mSearchString = "ro";  // "ro of Taro/Jiro/Saburo "
 
         // Gets the ListView from the View list of the parent activity
         mContactsList =
@@ -135,7 +154,7 @@ public class ContactsFragment extends Fragment implements
         }
     }
 
-    private void loadView() {
+    public void loadView() {
         // Initializes the loader
         // ContactsFragment自体を、LoaderManager.LoaderCallbacksのインスタンスとして、
         // 連絡先ローダを初期化
@@ -168,13 +187,22 @@ public class ContactsFragment extends Fragment implements
         // Starts the query
         // CursorLoaderインスタンスを作成、Contacts.CONTENT_URIからコンテンツURIを取得
         // 取得する列をPROJECTION,絞り込む条件をSELECTIONとmSelectionArgsで設定
+//        return new CursorLoader(
+//                getActivity(),
+//                Contacts.CONTENT_URI,
+//                PROJECTION,
+//                SELECTION,
+//                mSelectionArgs,
+//                null
+//        );
+
         return new CursorLoader(
                 getActivity(),
-                Contacts.CONTENT_URI,
+                Data.CONTENT_URI,
                 PROJECTION,
                 SELECTION,
                 mSelectionArgs,
-                null
+                SORT_ORDER
         );
     }
 
@@ -192,8 +220,42 @@ public class ContactsFragment extends Fragment implements
         mCursorAdapter.swapCursor(null);
     }
 
+    public static final int REQUEST_EDIT_CONTACT = 2;
+
     @Override
     public void onItemClick(AdapterView<?> parent, View item, int position, long rowID) {
+        Cursor mCursor = mCursorAdapter.getCursor();
 
+        // Moves to the Cursor row corresponding to the ListView item that was clicked
+        mCursor.moveToPosition(position);
+
+        /*
+        * Once the user has selected a contact to edit,
+        * this gets the contact's lookup key and _ID values from the
+        * cursor and creates the necessary URI.
+        */
+        // Gets the lookup key column index
+        int mLookupKeyIndex = mCursor.getColumnIndex(Contacts.LOOKUP_KEY);
+        // Gets the lookup key value
+        String mCurrentLookupKey = mCursor.getString(mLookupKeyIndex);
+        // Gets the _ID column index
+        int mIdIndex = mCursor.getColumnIndex(Contacts._ID);
+        long mCurrentId = mCursor.getLong(mIdIndex);
+        Uri mSelectedContactUri =
+                Contacts.getLookupUri(mCurrentId, mCurrentLookupKey);
+        // Creates a new Intent to edit a contact
+        Intent editIntent = new Intent(Intent.ACTION_EDIT);
+
+        /*
+         * Sets the contact URI to edit, and the data type that the
+         * Intent must match
+         */
+        editIntent.setDataAndType(mSelectedContactUri, Contacts.CONTENT_ITEM_TYPE);
+
+        // Sets the special extended data for navigation
+        editIntent.putExtra("finishActivityOnSaveCompleted", true);
+
+        // Sends the Intent
+        startActivityForResult(editIntent, REQUEST_EDIT_CONTACT);
     }
 }
