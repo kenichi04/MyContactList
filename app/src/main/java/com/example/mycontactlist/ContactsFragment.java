@@ -2,6 +2,7 @@ package com.example.mycontactlist;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -16,8 +17,11 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AdapterView;
+import android.widget.CursorAdapter;
 import android.widget.ListView;
+import android.widget.QuickContactBadge;
 import android.widget.SimpleCursorAdapter;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -64,7 +68,8 @@ public class ContactsFragment extends Fragment implements
     ListView mContactsList;
 
     // Cursorを受け取り、そこから取得されるデータを自動先にUIに格納してくれるアダプタ
-    private SimpleCursorAdapter mCursorAdapter;
+//    private SimpleCursorAdapter mCursorAdapter;
+    private CursorAdapter mCursorAdapter;  // 独自のCursorAdapterを実装するため
 
     @SuppressLint("InlinedApi")
     // データ取得するデータ群. _IDとLOOKUP_KEYはデータにアクセスする際に利用する
@@ -81,7 +86,8 @@ public class ContactsFragment extends Fragment implements
                         Email.TYPE,
                         Email.LABEL,
                         Contacts._ID,
-                        Contacts.LOOKUP_KEY
+                        Contacts.LOOKUP_KEY,
+                        Contacts.PHOTO_THUMBNAIL_URI
             };
 
     // Defines the text expression
@@ -130,13 +136,23 @@ public class ContactsFragment extends Fragment implements
         // Gets the ListView from the View list of the parent activity
         mContactsList =
                 (ListView) getActivity().findViewById(R.id.contacts_fragment);
+
         // Gets a CursorAdapter
+        /*
         mCursorAdapter = new SimpleCursorAdapter(
                 getActivity(),
                 R.layout.contacts_list_item,
                 null,
                 FROM_COLUMNS, TO_IDS,
                 0);
+
+        /*
+         * Instantiates the subclass of CursorAdapter
+         */
+        // 上に変えて、独自のadapterをインスタンス化
+        mCursorAdapter =
+                new ContactsAdapter(getActivity());
+
         // Sets the adapter for the ListView
         mContactsList.setAdapter(mCursorAdapter);
 
@@ -257,5 +273,88 @@ public class ContactsFragment extends Fragment implements
 
         // Sends the Intent
         startActivityForResult(editIntent, REQUEST_EDIT_CONTACT);
+    }
+
+    private class ContactsAdapter extends CursorAdapter {
+        private LayoutInflater mInflater;
+
+        public ContactsAdapter(Context context) {
+            super(context , null, 0);
+
+            /*
+            * Gets an inflater that can instantiate
+            * the ListView layout from the file.
+            */
+            mInflater = LayoutInflater.from(context);
+        }
+
+        /**
+         * Defines a class that hold resource IDs of each item layout
+         * row to prevent having to look them up each time data is
+         * bound to a row.
+         */
+        // リストの項目に表示させるデータのUIを表すクラス
+        public class ViewHolder {
+            TextView email;
+            QuickContactBadge quickcontact;
+        }
+
+        @Override
+        public View newView(
+                Context context,
+                Cursor cursor,
+                ViewGroup viewGroup) {
+            /*
+            * Inflates the item layout. Stores resource IDs
+            * in a ViewHolder class to prevent having to look
+            * them up each time bindView() is called.
+            */
+            final View itemView =
+                    mInflater.inflate(
+                            R.layout.contacts_list_item,
+                            viewGroup,
+                            false
+                    );
+            final ViewHolder holder = new ViewHolder();
+            holder.email =
+                    (TextView) itemView.findViewById(R.id.text1);
+            holder.quickcontact =
+                    (QuickContactBadge)itemView.findViewById(R.id.quickbadge);
+            // 関連するタグデータをViewに関連付け
+            itemView.setTag(holder);
+            return itemView;
+        }
+
+        // itemViewに対して呼ばれる度にcursorからデータを取得し、
+        // TextView（メールアドレス）とQuickContactBadge（サムネイルURIとコンテンツURI）を
+        // それぞれ設定
+        @Override
+        public void bindView(View view,
+                             Context context,
+                             Cursor cursor) {
+
+            final ViewHolder holder = (ViewHolder) view.getTag();
+            final String photoUri = cursor.getString(6);  // PHOTO_THUMBNAIL_URI
+
+            final String email = cursor.getString(1);  // ADDRESS
+            holder.email.setText(email);
+
+            // Gets the lookup key column index
+            int mLookupKeyIndex = cursor.getColumnIndex(Contacts.LOOKUP_KEY);
+            // Gets the _ID column index
+            int mIdIndex = cursor.getColumnIndex(Contacts._ID);
+
+            /*
+            * Generates a contact URI for the QuickContactsBadge.
+            */
+            final Uri contactUri = Contacts.getLookupUri(
+                    cursor.getLong(mIdIndex),
+                    cursor.getString(mLookupKeyIndex));
+            holder.quickcontact.assignContactUri(contactUri);
+            if (photoUri != null) {
+                holder.quickcontact.setImageURI(Uri.parse(photoUri));
+            }
+
+        }
     }
 }
